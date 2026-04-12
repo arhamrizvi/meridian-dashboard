@@ -1,6 +1,13 @@
-'use client'
+export const revalidate = 3600 // re-fetch from DB every hour
 
-import { KPI_METRICS, REVENUE_DATA, SPACE_UTIL, AI_INSIGHTS } from '@/lib/mockData'
+import {
+  fetchOverviewKpis,
+  fetchMonthlyRevenue,
+  fetchSpaceUtil,
+  type MonthlyRevenue,
+  type SpaceUtil,
+} from '@/lib/supabase'
+import { AI_INSIGHTS } from '@/lib/mockData'
 
 const ACCENT = '#34D399'
 
@@ -20,16 +27,16 @@ function Sparkline({ data, color = ACCENT }: { data: number[]; color?: string })
   )
 }
 
-function BarChart() {
-  const maxVal = Math.max(...REVENUE_DATA.map(d => d.desk + d.meeting + d.events))
+function BarChart({ data }: { data: MonthlyRevenue[] }) {
+  const maxVal = Math.max(...data.map(d => d.desk_sar + d.meeting_sar + d.events_sar))
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 140, padding: '0 4px' }}>
-      {REVENUE_DATA.map((d, i) => {
-        const total = d.desk + d.meeting + d.events
+      {data.map((d, i) => {
+        const total = d.desk_sar + d.meeting_sar + d.events_sar
         const h = (total / maxVal) * 120
-        const deskH = (d.desk / total) * h
-        const meetH = (d.meeting / total) * h
-        const eventH = (d.events / total) * h
+        const deskH = (d.desk_sar / total) * h
+        const meetH = (d.meeting_sar / total) * h
+        const eventH = (d.events_sar / total) * h
         return (
           <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', borderRadius: 4, overflow: 'hidden' }}>
@@ -37,7 +44,7 @@ function BarChart() {
               <div style={{ height: meetH, background: '#3B82F6' }} />
               <div style={{ height: deskH, background: ACCENT }} />
             </div>
-            <span style={{ fontSize: 10, color: '#6B7280', marginTop: 4, fontFamily: 'monospace' }}>{d.month}</span>
+            <span style={{ fontSize: 10, color: '#6B7280', marginTop: 4, fontFamily: 'monospace' }}>{d.month_label}</span>
           </div>
         )
       })}
@@ -74,13 +81,65 @@ const card = {
   padding: 20,
 }
 
-export default function OverviewPage() {
+function formatRevenue(sar: number): string {
+  if (sar >= 1_000_000) return `SAR ${(sar / 1_000_000).toFixed(2)}M`
+  if (sar >= 1_000) return `SAR ${(sar / 1_000).toFixed(0)}K`
+  return `SAR ${sar}`
+}
+
+// Build sparklines from monthly revenue history
+function buildSparklines(monthly: MonthlyRevenue[]) {
+  const totals = monthly.map(m => m.desk_sar + m.meeting_sar + m.events_sar)
+  return totals
+}
+
+export default async function OverviewPage() {
+  const [kpis, monthly, spaceUtil] = await Promise.all([
+    fetchOverviewKpis(),
+    fetchMonthlyRevenue(),
+    fetchSpaceUtil(),
+  ])
+
+  const revenueSparkline = buildSparklines(monthly)
+  const occupancyPct = kpis ? Number(kpis.occupancy_pct) : 0
+
+  const KPI_CARDS = kpis ? [
+    {
+      label: 'Occupancy rate',
+      value: `${kpis.occupancy_pct}%`,
+      delta: '+4.3%',
+      trend: 'up' as const,
+      sparkline: [74, 76, 77, 78, 79, 80, 81, occupancyPct],
+    },
+    {
+      label: 'Monthly revenue',
+      value: formatRevenue(kpis.total_revenue_sar),
+      delta: '+12.1%',
+      trend: 'up' as const,
+      sparkline: revenueSparkline.map(v => Math.round(v / 1000)),
+    },
+    {
+      label: 'Active tenants',
+      value: String(kpis.active_tenants),
+      delta: '+4',
+      trend: 'up' as const,
+      sparkline: [32, 34, 36, 37, 38, 39, 41, kpis.active_tenants],
+    },
+    {
+      label: 'Churn rate',
+      value: '2.6%',
+      delta: '-0.9%',
+      trend: 'down' as const,
+      sparkline: [5.1, 4.7, 4.3, 4.0, 3.7, 3.4, 2.9, 2.6],
+    },
+  ] : []
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* KPI cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-        {KPI_METRICS.map((m, i) => {
+        {KPI_CARDS.map((m, i) => {
           const isDown = m.label === 'Churn rate'
           const deltaColor = (m.trend === 'up' && !isDown) || (m.trend === 'down' && isDown) ? ACCENT : '#EF4444'
           return (
@@ -111,12 +170,14 @@ export default function OverviewPage() {
               ))}
             </div>
           </div>
-          <BarChart />
+          <BarChart data={monthly} />
         </div>
 
         <div style={card}>
           <div style={{ fontSize: 14, fontWeight: 500, color: '#F0FDF4', marginBottom: 16 }}>Space utilisation</div>
-          {SPACE_UTIL.map((s, i) => <UtilBar key={i} {...s} />)}
+          {spaceUtil.map((s, i) => (
+            <UtilBar key={i} name={s.space_type} capacity={s.total_capacity} used={s.units_used} color={s.display_color} />
+          ))}
         </div>
       </div>
 

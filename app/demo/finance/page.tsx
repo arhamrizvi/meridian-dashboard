@@ -1,10 +1,50 @@
-'use client'
+export const revalidate = 3600 // re-fetch from DB every hour
 
-import { FINANCE_METRICS, PNL_ROWS } from '@/lib/mockData'
+import {
+  fetchPnl,
+  fetchFinanceSummary,
+  fetchRevenueBranches,
+  type PnlRow,
+} from '@/lib/supabase'
 
 const ACCENT = '#34D399'
 
-export default function FinancePage() {
+function formatSar(n: number): string {
+  if (n >= 1_000_000) return `SAR ${(n / 1_000_000).toFixed(2)}M`
+  return n.toLocaleString()
+}
+
+export default async function FinancePage() {
+  const [pnl, summary, branches] = await Promise.all([
+    fetchPnl(),
+    fetchFinanceSummary(),
+    fetchRevenueBranches(),
+  ])
+
+  const grossRevenue = summary?.gross_revenue ?? 1
+  const grossMarginPct = summary?.gross_margin_pct ?? '0'
+
+  const FINANCE_METRICS = summary ? [
+    {
+      label: 'Gross margin',
+      value: `${grossMarginPct}%`,
+      delta: '+1.9%',
+      sub: `SAR ${Math.round(summary.gross_profit / 1000)}K / SAR ${Math.round(summary.gross_revenue / 1000)}K`,
+    },
+    {
+      label: 'OpEx / seat',
+      value: 'SAR 1,627',
+      delta: '-3.7%',
+      sub: 'Down from SAR 1,690 last quarter',
+    },
+    {
+      label: 'LTV:CAC ratio',
+      value: '5.1x',
+      delta: '+0.8x',
+      sub: 'Healthy — target >3x',
+    },
+  ] : []
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
@@ -34,11 +74,11 @@ export default function FinancePage() {
             </tr>
           </thead>
           <tbody>
-            {PNL_ROWS.map((row, i) => {
-              const isSub = row.type === 'sub'
-              const isHighlight = ['profit', 'ebitda'].includes(row.type)
-              const isRed = row.type === 'cost'
-              const pct = ((row.value / 1440000) * 100).toFixed(1)
+            {pnl.map((row: PnlRow, i: number) => {
+              const isSub = row.row_type === 'sub'
+              const isHighlight = ['profit', 'ebitda'].includes(row.row_type)
+              const isRed = row.row_type === 'cost'
+              const pct = ((row.amount_sar / grossRevenue) * 100).toFixed(1)
               return (
                 <tr key={i} style={{
                   borderBottom: isHighlight ? '1px solid rgba(255,255,255,.07)' : '1px solid rgba(255,255,255,.03)',
@@ -48,7 +88,7 @@ export default function FinancePage() {
                     {row.label}
                   </td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: isHighlight ? ACCENT : isRed ? '#EF4444' : '#9CA3AF', fontFamily: 'monospace', fontWeight: isHighlight ? 600 : 400 }}>
-                    {isRed ? '−' : ''}{row.value.toLocaleString()}
+                    {isRed ? '−' : ''}{row.amount_sar.toLocaleString()}
                   </td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', color: '#6B7280', fontFamily: 'monospace', fontSize: 12 }}>
                     {pct}%
@@ -63,28 +103,19 @@ export default function FinancePage() {
       {/* Branch revenue breakdown */}
       <div style={{ background: '#111814', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, padding: 20 }}>
         <div style={{ fontSize: 14, fontWeight: 500, color: '#F0FDF4', marginBottom: 16 }}>Revenue by branch</div>
-        {[
-          { name: 'Riyadh HQ',           rev: 312000 },
-          { name: 'KAFD Tower',           rev: 278000 },
-          { name: 'Jeddah Central',       rev: 215000 },
-          { name: 'Makkah Road',          rev: 186000 },
-          { name: 'Dammam Business Hub',  rev: 174000 },
-          { name: 'KAUST Innovation Hub', rev: 148000 },
-          { name: 'Al Khobar Plaza',      rev: 127000 },
-        ].map((b, i) => {
-          const pct = Math.round((b.rev / 1440000) * 100)
-          return (
-            <div key={i} style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
-                <span style={{ color: '#F0FDF4', fontWeight: 500 }}>{b.name}</span>
-                <span style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>SAR {b.rev.toLocaleString()} <span style={{ color: '#6B7280' }}>({pct}%)</span></span>
-              </div>
-              <div style={{ height: 5, background: 'rgba(255,255,255,.07)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: ACCENT, borderRadius: 3 }} />
-              </div>
+        {branches.map((b, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 5 }}>
+              <span style={{ color: '#F0FDF4', fontWeight: 500 }}>{b.name}</span>
+              <span style={{ color: '#9CA3AF', fontFamily: 'monospace' }}>
+                SAR {b.monthly_revenue.toLocaleString()} <span style={{ color: '#6B7280' }}>({b.revenue_pct}%)</span>
+              </span>
             </div>
-          )
-        })}
+            <div style={{ height: 5, background: 'rgba(255,255,255,.07)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${b.revenue_pct}%`, height: '100%', background: ACCENT, borderRadius: 3 }} />
+            </div>
+          </div>
+        ))}
       </div>
 
     </div>

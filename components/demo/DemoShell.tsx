@@ -56,12 +56,7 @@ export default function DemoShell({ children }: { children: React.ReactNode }) {
           onClick={() => setSidebarOpen(o => !o)}
           style={{ padding: '20px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
         >
-          <div style={{
-            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-            background: `linear-gradient(135deg, ${ACCENT}, #065F46)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14, fontWeight: 700, color: '#fff',
-          }}>M</div>
+          <img src="/logo-icon.svg" alt="Meridian" style={{ width: 30, height: 30, flexShrink: 0 }} />
           {sidebarOpen && (
             <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--color-text-primary, #F0FDF4)', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
               Meridian
